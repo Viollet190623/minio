@@ -1,75 +1,47 @@
-version: '3.7'
+version: "3.8"
 
-# Settings and configurations that are common for all containers
-x-minio-common: &minio-common
-  image: quay.io/minio/minio:RELEASE.2025-07-23T15-54-02Z
-  command: server --console-address ":9001" http://minio{1...4}/data{1...2}
-  expose:
-    - "9000"
-    - "9001"
-  # environment:
-    # MINIO_ROOT_USER: minioadmin
-    # MINIO_ROOT_PASSWORD: minioadmin
-  healthcheck:
-    test: ["CMD", "mc", "ready", "local"]
-    interval: 5s
-    timeout: 5s
-    retries: 5
-
-# starts 4 docker containers running minio server instances.
-# using nginx reverse proxy, load balancing, you can access
-# it through port 9000.
 services:
-  minio1:
-    <<: *minio-common
-    hostname: minio1
+  minio:
+    image: quay.io/minio/minio:RELEASE.2025-07-23T15-54-02Z
+    command: server /data --console-address ":9001"
+    networks:
+      - traefik_public
     volumes:
-      - data1-1:/data1
-      - data1-2:/data2
+      - minio_data:/data
+    environment:
+      MINIO_ROOT_USER: gersonortiz693
+      MINIO_ROOT_PASSWORD: f79be0f54d7fc7e6335ad869d0cb2380
+      MINIO_BROWSER_REDIRECT_URL: https://ssminiofrontss.s-team-marketing.com
+      MINIO_SERVER_URL: https://ssminiobackss.s-team-marketing.com
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+          limits:
+            cpus: '0.5'
+            memory: 1024M
+      labels:
+        - traefik.enable=true
+        - traefik.http.routers.minio_s3.rule=Host(`ssminiobackss.s-team-marketing.com`)
+        - traefik.http.routers.minio_s3.tls.certresolver=le
+        - traefik.http.routers.minio_s3.entrypoints=websecure
+        - traefik.http.routers.minio_s3.tls=true
+        - traefik.http.routers.minio_s3.service=minio_s3
+        - traefik.http.services.minio_s3.loadbalancer.server.port=9000
+        - traefik.http.routers.minio_console.rule=Host(`ssminiofrontss.s-team-marketing.com`)
+        - traefik.http.routers.minio_console.tls.certresolver=le
+        - traefik.http.routers.minio_console.entrypoints=websecure
+        - traefik.http.routers.minio_console.tls=true
+        - traefik.http.routers.minio_console.service=minio_console
+        - traefik.http.services.minio_console.loadbalancer.server.port=9001
 
-  minio2:
-    <<: *minio-common
-    hostname: minio2
-    volumes:
-      - data2-1:/data1
-      - data2-2:/data2
-
-  minio3:
-    <<: *minio-common
-    hostname: minio3
-    volumes:
-      - data3-1:/data1
-      - data3-2:/data2
-
-  minio4:
-    <<: *minio-common
-    hostname: minio4
-    volumes:
-      - data4-1:/data1
-      - data4-2:/data2
-
-  nginx:
-    image: nginx:1.19.2-alpine
-    hostname: nginx
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-    ports:
-      - "9000:9000"
-      - "9001:9001"
-    depends_on:
-      - minio1
-      - minio2
-      - minio3
-      - minio4
-
-## By default this config uses default local driver,
-## For custom volumes replace with volume driver configuration.
 volumes:
-  data1-1:
-  data1-2:
-  data2-1:
-  data2-2:
-  data3-1:
-  data3-2:
-  data4-1:
-  data4-2:
+  minio_data:
+    external: true
+
+networks:
+  traefik_public:
+    external: true
